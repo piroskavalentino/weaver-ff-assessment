@@ -1,0 +1,53 @@
+name: Deploy booth assessment to GitHub Pages
+
+# Stages ONLY the production HTML file for the Nashville booth build.
+# Nothing here runs automatically against a hosted Supabase project.
+#
+# Deliberately NOT wired to push/main — deployment happens only when
+# someone runs it by hand. See README.md.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "weaver-pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify the production file is present
+        run: |
+          test -f weaver-upstream-diagnostic-nashville.html || {
+            echo "::error::weaver-upstream-diagnostic-nashville.html not found";
+            exit 1;
+          }
+
+      - name: Stage only the assessment HTML
+        run: |
+          mkdir -p _site
+          cp weaver-upstream-diagnostic-nashville.html _site/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
