@@ -4287,18 +4287,24 @@ function apiCall(route,body,opts){
   }).then(r=>r.json().catch(()=>null).then(json=>({httpOk:r.ok,json})))
     .catch(e=>({httpOk:false,json:{ok:false,code:'network_error',message:String(e&&e.message||e)}}));
 }
-function syncStart(responseId){
+// Returns a Promise<boolean>: true once the server actually has this
+// record, false otherwise. Callers that need /start done first - notably
+// flushPending() below, for a respondent who completed entirely offline and
+// so never had a successful /start either - chain on this instead of
+// assuming the row already exists.
+function syncStart(responseId,opts){
   const sync=getSync(responseId);
-  if(!sync||!sync.write_token)return;
-  apiCall('/start',{
+  if(!sync||!sync.write_token)return Promise.resolve(false);
+  return apiCall('/start',{
     event_id:CONTENT.meta.event_id,response_id:responseId,write_token:sync.write_token,
     instance_id:instanceId(),content_version:CONTENT.meta.version,app_version:APP_VERSION,role:S.role
-  }).then(({httpOk,json})=>{
+  },opts).then(({httpOk,json})=>{
     if(httpOk&&json&&json.ok){
       upsertSync(responseId,{server_id:(json.data&&json.data.id)||null,sync_status:'synced',last_sync_error:null});
-    }else{
-      upsertSync(responseId,{sync_status:'error',last_sync_error:(json&&json.message)||'start failed'});
+      return true;
     }
+    upsertSync(responseId,{sync_status:'error',last_sync_error:(json&&json.message)||'start failed'});
+    return false;
   });
 }
 let saveSyncTimer=null;
@@ -4347,15 +4353,32 @@ function syncComplete(responseId,opts){
 function flushPending(){
   readSync().forEach(rec=>{
     if(!rec.write_token)return;
-    if(rec.pending_completion){syncComplete(rec.response_id);return;}
-    if(rec.sync_status==='synced')return;
-    syncStart(rec.response_id);
-    if(S&&S.response_id===rec.response_id&&!S.saved)queueSaveSync();
+    if(rec.sync_status==='synced'&&!rec.pending_completion)return;
+    // Whatever's still outstanding, the server needs the row to exist
+    // first. A respondent who completed entirely offline never had a
+    // successful /start, and /complete against a row that isn't there
+    // 404s forever - so always (re)confirm /start before attempting
+    // /complete or /save. /start is idempotent, so this is cheap once the
+    // record is already synced.
+    syncStart(rec.response_id).then(started=>{
+      if(!started)return; // still unreachable; the next flush retries from here
+      if(rec.pending_completion)syncComplete(rec.response_id);
+      else if(S&&S.response_id===rec.response_id&&!S.saved)queueSaveSync();
+    });
   });
 }
 function flushPendingOnTeardown(){
   readSync().forEach(rec=>{
-    if(rec.write_token&&rec.pending_completion)syncComplete(rec.response_id,{keepalive:true});
+    if(!rec.write_token)return;
+    if(rec.sync_status==='synced'&&!rec.pending_completion)return;
+    // Best-effort, fire-and-forget - a chained await is not reliable once
+    // the page is unloading, so /start and /complete go out as two
+    // concurrent keepalive requests rather than one waiting on the other.
+    // If /start hasn't landed by the time /complete is processed, the
+    // ordinary flushPending() retry loop (on next startup/online/
+    // visibilitychange) picks it up correctly either way.
+    syncStart(rec.response_id,{keepalive:true});
+    if(rec.pending_completion)syncComplete(rec.response_id,{keepalive:true});
   });
 }
 
