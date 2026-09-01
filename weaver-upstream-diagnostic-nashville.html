@@ -4473,6 +4473,13 @@ function buildTeaserSVG(snapshot,contact){
   const belowLine=snapshot.assessed_area_count
     ?`${snapshot.below_target_count} of ${snapshot.assessed_area_count} assessed areas below target`:'';
   const p=snapshot.primary_pattern||{name:'',text:''};
+  // Raw SVG <text> never wraps on its own (unlike buildReport()'s HTML,
+  // which flows naturally) - anything that could run long needs an
+  // explicit line budget or it silently bleeds off the right edge of the
+  // card. Meta line and pattern name are single dominant lines by design,
+  // so they clamp to one line with an ellipsis rather than wrapping.
+  const metaLine=wrapLines([contact.company,contact.name,role].filter(Boolean).join(' · '),118,1)[0]||'';
+  const nameLine=wrapLines(p.name,38,1)[0]||'';
   const patternLines=wrapLines(p.text,56,2);
   const lg=snapshot.largest_opportunity;
   const mode=(snapshot.chain_analysis&&snapshot.chain_analysis.mode)||'none';
@@ -4491,7 +4498,7 @@ function buildTeaserSVG(snapshot,contact){
     <rect x="0" y="0" width="14" height="${H}" fill="${C.brand}"/>
     <text x="70" y="66" font-size="22" font-weight="800" letter-spacing="2" fill="${C.brand}">WEAVER</text>
     <text x="70" y="94" font-size="14" letter-spacing="1.5" fill="#7A7A7A">UPSTREAM FIELD-TO-FINANCE DIAGNOSTIC &#183; ENERTIA 2026</text>
-    <text x="70" y="122" font-size="15" fill="#424142">${esc([contact.company,contact.name,role].filter(Boolean).join(' · '))}</text>
+    <text x="70" y="122" font-size="15" fill="#424142">${esc(metaLine)}</text>
     <line x1="70" y1="150" x2="${W-70}" y2="150" stroke="#E6E6E6" stroke-width="1"/>
     <text x="70" y="190" font-size="15" letter-spacing="1.5" fill="#7A7A7A">YOUR ASSESSMENT SNAPSHOT</text>
     <text x="70" y="270" font-size="72" font-weight="800" fill="${C.brand}">${esc((+snapshot.maturity).toFixed(1))} / 5</text>
@@ -4499,7 +4506,7 @@ function buildTeaserSVG(snapshot,contact){
     ${belowLine?`<text x="70" y="338" font-size="18" fill="${C.gap}">${esc(belowLine)}</text>`:''}
     <line x1="70" y1="366" x2="${W-70}" y2="366" stroke="#E6E6E6" stroke-width="1"/>
     <text x="70" y="402" font-size="15" letter-spacing="1.5" fill="#7A7A7A">WHAT YOUR ANSWERS POINT TO</text>
-    <text x="70" y="448" font-size="40" font-weight="800" fill="${C.ink}">${esc(p.name||'')}</text>
+    <text x="70" y="448" font-size="40" font-weight="800" fill="${C.ink}">${esc(nameLine)}</text>
     ${patternLines.map((l,i)=>`<text x="70" y="${482+i*30}" font-size="20" fill="#424142">${esc(l)}</text>`).join('')}
     <line x1="70" y1="546" x2="${W-70}" y2="546" stroke="#E6E6E6" stroke-width="1"/>
     <text x="70" y="580" font-size="15" letter-spacing="1.5" fill="#7A7A7A">LARGEST OPPORTUNITY</text>
