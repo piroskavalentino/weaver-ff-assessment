@@ -217,6 +217,12 @@ form{margin:0}
 .admin th,.admin td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--rule);white-space:nowrap}
 .admin th{color:var(--steel);font-weight:500;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* Admin Reports preview embeds raw <svg> (teaser card, chain diagram) with
+   fixed pixel widths meant for export/print, not for a flexible panel - scale
+   them to the panel on narrow windows instead of silently needing a scrollbar
+   to read them. Print popup and PNG export are separate documents/strings and
+   are untouched by this. */
+#repPreview svg{max-width:100%;height:auto;display:block}
 .warn{background:#FDF0EA;border:1px solid var(--gap);border-radius:8px;padding:12px 14px;font-size:14px;color:var(--ink-soft);margin:14px 0}
 
 @media print{
