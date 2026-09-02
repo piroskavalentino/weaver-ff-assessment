@@ -11,25 +11,50 @@
 // `Authorization: Bearer` — the new publishable/secret keys are not JWTs and
 // the platform gateway rejects them there before this handler ever runs.
 //
-// Database access uses the Supabase secret key (SUPABASE_SECRET_KEYS), never
-// the legacy service_role key. This client bypasses RLS by design — RLS on
+// Database access uses the Supabase secret key, never the legacy
+// service_role key. This client bypasses RLS by design — RLS on
 // `assessments` exists to lock the publishable key out, not to constrain
 // this function.
+//
+// SUPABASE_ is a reserved prefix - the dashboard refuses to let you set a
+// project secret named SUPABASE_SECRET_KEYS, so that name only resolves if
+// the platform auto-injects it itself. PROJECT_SECRET_KEY is the fallback:
+// a normal, settable secret holding the same "secret" key value from
+// Project Settings > API Keys, for whichever environment doesn't.
+//
+// createClient() throws synchronously if handed a falsy key - which would
+// crash this module before Deno.serve ever registers, producing exactly
+// the failure mode that's impossible to diagnose (every route 500s, no
+// request ever shows up in Invocations or Logs, because nothing ran). A
+// placeholder string keeps construction from crashing; the explicit check
+// in the request handler below is what actually reports the real problem.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SECRET_KEY =
-  Deno.env.get("SUPABASE_SECRET_KEYS") ?? Deno.env.get("SUPABASE_SECRET_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SECRET_KEY = Deno.env.get("SUPABASE_SECRET_KEYS") ?? Deno.env.get("PROJECT_SECRET_KEY") ?? "";
 const REPORTS_PASSPHRASE = Deno.env.get("REPORTS_PASSPHRASE") ?? "";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const db: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
-  auth: { persistSession: false },
-});
+// Presence only, never values - safe to leave in place permanently. Check
+// Edge Functions > Logs after a deploy if requests are failing; this says
+// exactly what's missing instead of leaving you to guess.
+console.log("assessment-api boot config:", JSON.stringify({
+  SUPABASE_URL_present: !!SUPABASE_URL,
+  SUPABASE_SECRET_KEYS_present: !!Deno.env.get("SUPABASE_SECRET_KEYS"),
+  PROJECT_SECRET_KEY_present: !!Deno.env.get("PROJECT_SECRET_KEY"),
+  REPORTS_PASSPHRASE_present: !!REPORTS_PASSPHRASE,
+  ALLOWED_ORIGINS_count: ALLOWED_ORIGINS.length,
+}));
+
+const db: SupabaseClient = createClient(
+  SUPABASE_URL || "https://misconfigured.invalid",
+  SECRET_KEY || "missing-secret-key",
+  { auth: { persistSession: false } },
+);
 
 const OWNERS = ["Sparsh", "Joseph"] as const;
 type Owner = (typeof OWNERS)[number];
@@ -458,6 +483,14 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") {
     return fail("method_not_allowed", "Use POST.", 405, origin);
+  }
+  if (!SECRET_KEY) {
+    // Reported explicitly, before touching the database client, so this
+    // shows up as a normal request in Invocations with a readable message -
+    // not a silent boot crash that leaves every route 500ing with nothing
+    // to diagnose from.
+    console.error("assessment-api: no database secret key configured (checked SUPABASE_SECRET_KEYS, PROJECT_SECRET_KEY)");
+    return fail("config_error", "Server misconfigured: no database secret key available.", 500, origin);
   }
 
   const url = new URL(req.url);
