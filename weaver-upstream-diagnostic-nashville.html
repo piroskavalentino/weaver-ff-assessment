@@ -4468,7 +4468,7 @@ function chainDiagramSVG(a,box){
 }
 function buildTeaserSVG(snapshot,contact){
   contact=contact||{};
-  const C=TEASER_COLORS,W=1200,H=900;
+  const C=TEASER_COLORS,W=1200;
   const role=roleLabelFor(snapshot.role);
   const belowLine=snapshot.assessed_area_count
     ?`${snapshot.below_target_count} of ${snapshot.assessed_area_count} assessed areas below target`:'';
@@ -4484,14 +4484,30 @@ function buildTeaserSVG(snapshot,contact){
   const lg=snapshot.largest_opportunity;
   const mode=(snapshot.chain_analysis&&snapshot.chain_analysis.mode)||'none';
   const chain=(lg&&mode!=='none')?chainDiagramSVG(snapshot.chain_analysis,{w:420,h:150}):null;
+  // node mode's box names the STAGE (e.g. "Close"), which is broader than
+  // the specific capability named in lg.short_label just below it (e.g.
+  // "Asset accounting and DD&A", which happens to live inside Close). Both
+  // are always the same underlying answer - lg.short_label and
+  // chain_analysis.label both come from shortName(res.largest.q) - but with
+  // nothing connecting them it reads as two different findings. This
+  // caption is the same wording the untouched on-screen renderOpportunity()
+  // already uses for this exact case ("Largest opportunity sits within X").
+  const stageCaption=(mode==='node'&&lg)?(()=>{
+    const c=findChainNode(snapshot.chain_analysis.stage);
+    return c?`Largest opportunity sits within ${c.label}`:null;
+  })():null;
   const oppTop=600;
+  const capH=stageCaption?26:0;
+  const H=900+capH;
   let oppBlock;
   if(!lg||mode==='none'){
     oppBlock=`<text x="70" y="${oppTop+40}" font-size="24" fill="#424142">Every assessed area meets or exceeds target for an operation like yours.</text>`;
   }else{
+    const capLine=stageCaption?`<text x="70" y="${oppTop+20+150+30}" font-size="16" fill="#7A7A7A">${esc(stageCaption)}</text>`:'';
     oppBlock=`<g transform="translate(70,${oppTop+20})">${chain.svg}</g>
-      <text x="70" y="${oppTop+20+150+34}" font-size="28" font-weight="700" fill="${C.ink}">${esc(lg.short_label)}</text>
-      <text x="70" y="${oppTop+20+150+66}" font-size="22" fill="#424142">${esc(lg.current_label)} → ${esc(lg.target_label)}</text>`;
+      ${capLine}
+      <text x="70" y="${oppTop+20+150+34+capH}" font-size="28" font-weight="700" fill="${C.ink}">${esc(lg.short_label)}</text>
+      <text x="70" y="${oppTop+20+150+66+capH}" font-size="22" fill="#424142">${esc(lg.current_label)} → ${esc(lg.target_label)}</text>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="${TEASER_FONT_STACK}">
     <rect x="0" y="0" width="${W}" height="${H}" fill="#FFFFFF"/>
@@ -4511,9 +4527,9 @@ function buildTeaserSVG(snapshot,contact){
     <line x1="70" y1="546" x2="${W-70}" y2="546" stroke="#E6E6E6" stroke-width="1"/>
     <text x="70" y="580" font-size="15" letter-spacing="1.5" fill="#7A7A7A">LARGEST OPPORTUNITY</text>
     ${oppBlock}
-    <line x1="70" y1="846" x2="${W-70}" y2="846" stroke="#E6E6E6" stroke-width="1"/>
-    <text x="70" y="872" font-size="17" fill="#424142">Full Field-to-Finance snapshot to follow after Enertia.</text>
-    <text x="70" y="894" font-size="13" letter-spacing="1.5" fill="#7A7A7A">WEAVER &#183; ENERGY TECHNOLOGY</text>
+    <line x1="70" y1="${846+capH}" x2="${W-70}" y2="${846+capH}" stroke="#E6E6E6" stroke-width="1"/>
+    <text x="70" y="${872+capH}" font-size="17" fill="#424142">Full Field-to-Finance snapshot to follow after Enertia.</text>
+    <text x="70" y="${894+capH}" font-size="13" letter-spacing="1.5" fill="#7A7A7A">WEAVER &#183; ENERGY TECHNOLOGY</text>
   </svg>`;
 }
 function svgToPngBlob(svgString,width,height){
@@ -4543,12 +4559,25 @@ function slugFor(snapshot,contact){
   const who=(contact&&contact.name)||snapshot.role||'assessment';
   return String(who).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')||'assessment';
 }
+// buildTeaserSVG's card height varies slightly (node mode adds a caption
+// line) - read the real size back off its own root <svg width height>
+// rather than hardcoding 1200x900, so a taller card never gets cropped by
+// a fixed-size canvas.
+function svgIntrinsicSize(svgString){
+  const w=/^[\s\S]*?<svg[^>]*\bwidth="(\d+(?:\.\d+)?)"/.exec(svgString);
+  const h=/^[\s\S]*?<svg[^>]*\bheight="(\d+(?:\.\d+)?)"/.exec(svgString);
+  return {width:w?+w[1]:1200,height:h?+h[1]:900};
+}
 async function downloadTeaserPNG(snapshot,contact){
-  const blob=await svgToPngBlob(buildTeaserSVG(snapshot,contact),1200,900);
+  const svg=buildTeaserSVG(snapshot,contact);
+  const {width,height}=svgIntrinsicSize(svg);
+  const blob=await svgToPngBlob(svg,width,height);
   downloadBlob(blob,'weaver-teaser-'+slugFor(snapshot,contact)+'.png');
 }
 async function copyTeaserPNG(snapshot,contact){
-  const blob=await svgToPngBlob(buildTeaserSVG(snapshot,contact),1200,900);
+  const svg=buildTeaserSVG(snapshot,contact);
+  const {width,height}=svgIntrinsicSize(svg);
+  const blob=await svgToPngBlob(svg,width,height);
   if(navigator.clipboard&&window.ClipboardItem){
     try{
       await navigator.clipboard.write([new window.ClipboardItem({'image/png':blob})]);
@@ -4589,8 +4618,19 @@ function buildReport(snapshot,contact){
       <div style="font-family:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;font-size:12px;color:#3E6C57;font-weight:700">${String(i+1).padStart(2,'0')} / ${String(priArr.length).padStart(2,'0')}</div>
       <div style="font-size:15px;color:#000">${esc(a.what)}</div>
     </div>`).join('');
+  // Same reconciliation buildTeaserSVG needs: node mode's diagram box names
+  // the stage (e.g. "Close"), broader than the specific capability in
+  // lg.short_label just below it (e.g. "Asset accounting and DD&A", which
+  // lives inside Close) - both always agree (same shortName(largest.q)
+  // source) but read as contradictory without this connecting line, the
+  // same wording the untouched on-screen renderOpportunity() uses.
+  const stageCaption=(mode==='node'&&lg)?(()=>{
+    const c=findChainNode(snapshot.chain_analysis.stage);
+    return c?`Largest opportunity sits within ${c.label}`:null;
+  })():null;
   const oppSection=(lg&&mode!=='none')?`
     <div style="margin:18px 0">${chain.svg}</div>
+    ${stageCaption?`<div style="font-size:13px;color:#7A7A7A;margin-bottom:6px">${esc(stageCaption)}</div>`:''}
     <div style="font-size:18px;font-weight:700;margin-bottom:4px">${esc(lg.short_label)}</div>
     <div style="font-size:15px;color:#424142">Current: <b>${esc(lg.current_label)}</b>&nbsp;&nbsp;Target: <b>${esc(lg.target_label)}</b></div>`
     :`<p style="font-size:15px;color:#424142">Every assessed area meets or exceeds target for an operation like yours.</p>`;
