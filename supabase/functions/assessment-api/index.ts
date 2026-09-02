@@ -235,7 +235,10 @@ async function routeStart(body: Record<string, unknown>, origin: string | null) 
     .eq("event_id", event_id)
     .eq("response_id", response_id)
     .maybeSingle();
-  if (selErr) throw new RouteError("db_error", "Could not look up record.", 500);
+  if (selErr) {
+    console.error("assessment-api /start select failed:", JSON.stringify(selErr));
+    throw new RouteError("db_error", "Could not look up record.", 500);
+  }
 
   if (existing) {
     // Idempotent retry: only hand the record back if the caller can prove
@@ -273,6 +276,7 @@ async function routeStart(body: Record<string, unknown>, origin: string | null) 
     if (race && race.write_token_hash === write_token_hash) {
       return ok({ id: race.id, status: race.status }, origin);
     }
+    console.error("assessment-api /start insert failed:", JSON.stringify(insErr));
     throw new RouteError("db_error", "Could not create record.", 500);
   }
   return ok({ id: inserted.id, status: inserted.status }, origin);
@@ -285,7 +289,10 @@ async function loadForWrite(event_id: string, response_id: string, write_token: 
     .eq("event_id", event_id)
     .eq("response_id", response_id)
     .maybeSingle();
-  if (error) throw new RouteError("db_error", "Could not look up record.", 500);
+  if (error) {
+    console.error("assessment-api loadForWrite select failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not look up record.", 500);
+  }
   if (!row) throw new RouteError("not_found", "No record for this response_id.", 404);
   const hash = await sha256Hex(write_token);
   if (row.write_token_hash !== hash) {
@@ -323,7 +330,10 @@ async function routeSave(body: Record<string, unknown>, origin: string | null) {
   if ("answers" in body) patch.answers = body.answers ?? {};
 
   const { error } = await db.from("assessments").update(patch).eq("id", row.id);
-  if (error) throw new RouteError("db_error", "Could not save.", 500);
+  if (error) {
+    console.error("assessment-api /save update failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not save.", 500);
+  }
   return ok({ id: row.id, status: row.status }, origin);
 }
 
@@ -375,7 +385,10 @@ async function routeComplete(body: Record<string, unknown>, origin: string | nul
     .eq("id", row.id)
     .select("id, status, completed_at")
     .single();
-  if (error) throw new RouteError("db_error", "Could not complete.", 500);
+  if (error) {
+    console.error("assessment-api /complete update failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not complete.", 500);
+  }
   return ok(updated, origin);
 }
 
@@ -396,7 +409,10 @@ async function routeAdminList(body: Record<string, unknown>, origin: string | nu
     .eq("event_id", event_id)
     .eq("status", "completed")
     .order("completed_at", { ascending: false });
-  if (error) throw new RouteError("db_error", "Could not list records.", 500);
+  if (error) {
+    console.error("assessment-api /admin/list select failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not list records.", 500);
+  }
   return ok((data ?? []).map(listProjection), origin, true);
 }
 
@@ -415,7 +431,10 @@ async function routeAdminGet(body: Record<string, unknown>, origin: string | nul
     .eq("id", id)
     .eq("status", "completed")
     .maybeSingle();
-  if (error) throw new RouteError("db_error", "Could not load record.", 500);
+  if (error) {
+    console.error("assessment-api /admin/get select failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not load record.", 500);
+  }
   if (!data) throw new RouteError("not_found", "No such record.", 404);
   return ok(fullProjection(data), origin, true);
 }
@@ -439,7 +458,10 @@ async function routeAdminMarkSent(body: Record<string, unknown>, origin: string 
       ? { teaser_sent_at: now, teaser_sent_by: sentBy ?? null, updated_at: now }
       : { report_sent_at: now, report_sent_by: sentBy ?? null, updated_at: now };
   const { error } = await db.from("assessments").update(patch).eq("event_id", event_id).eq("id", id);
-  if (error) throw new RouteError("db_error", "Could not update record.", 500);
+  if (error) {
+    console.error("assessment-api /admin/mark-sent update failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not update record.", 500);
+  }
   return ok({ id }, origin, true);
 }
 
@@ -457,7 +479,10 @@ async function routeAdminSetOwner(body: Record<string, unknown>, origin: string 
     .update({ follow_up_owner: owner ?? null, updated_at: new Date().toISOString() })
     .eq("event_id", event_id)
     .eq("id", id);
-  if (error) throw new RouteError("db_error", "Could not update record.", 500);
+  if (error) {
+    console.error("assessment-api /admin/set-owner update failed:", JSON.stringify(error));
+    throw new RouteError("db_error", "Could not update record.", 500);
+  }
   return ok({ id }, origin, true);
 }
 
