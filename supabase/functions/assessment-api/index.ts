@@ -18,9 +18,14 @@
 //
 // SUPABASE_ is a reserved prefix - the dashboard refuses to let you set a
 // project secret named SUPABASE_SECRET_KEYS, so that name only resolves if
-// the platform auto-injects it itself. PROJECT_SECRET_KEY is the fallback:
-// a normal, settable secret holding the same "secret" key value from
-// Project Settings > API Keys, for whichever environment doesn't.
+// the platform auto-injects it itself. On this project it turns out to be
+// present (Deno.env.get returns something truthy) but not a value that
+// works as a Postgrest credential - "Invalid API key" came straight back,
+// with a hint that names the legacy anon/service_role check, suggesting
+// whatever SUPABASE_SECRET_KEYS actually holds here isn't a directly-usable
+// key string. PROJECT_SECRET_KEY - a normal, settable secret holding the
+// literal "secret" key value copied from Project Settings > API Keys - is
+// the one actually verified correct, so it takes priority.
 //
 // createClient() throws synchronously if handed a falsy key - which would
 // crash this module before Deno.serve ever registers, producing exactly
@@ -32,22 +37,26 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SECRET_KEY = Deno.env.get("SUPABASE_SECRET_KEYS") ?? Deno.env.get("PROJECT_SECRET_KEY") ?? "";
+const SECRET_KEY = Deno.env.get("PROJECT_SECRET_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEYS") ?? "";
 const REPORTS_PASSPHRASE = Deno.env.get("REPORTS_PASSPHRASE") ?? "";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-// Presence only, never values - safe to leave in place permanently. Check
-// Edge Functions > Logs after a deploy if requests are failing; this says
-// exactly what's missing instead of leaving you to guess.
+// Presence/shape only, never the full value - safe to leave in place
+// permanently. Check Edge Functions > Logs after a deploy if requests are
+// failing; keyPrefix/keyLength let you sanity-check *which* candidate got
+// picked and whether it looks like a real key (e.g. starts with
+// "sb_secret_") without ever exposing the secret itself.
 console.log("assessment-api boot config:", JSON.stringify({
   SUPABASE_URL_present: !!SUPABASE_URL,
   SUPABASE_SECRET_KEYS_present: !!Deno.env.get("SUPABASE_SECRET_KEYS"),
   PROJECT_SECRET_KEY_present: !!Deno.env.get("PROJECT_SECRET_KEY"),
   REPORTS_PASSPHRASE_present: !!REPORTS_PASSPHRASE,
   ALLOWED_ORIGINS_count: ALLOWED_ORIGINS.length,
+  selectedKeyPrefix: SECRET_KEY.slice(0, 12),
+  selectedKeyLength: SECRET_KEY.length,
 }));
 
 const db: SupabaseClient = createClient(
