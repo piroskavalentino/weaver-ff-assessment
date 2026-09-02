@@ -4428,7 +4428,10 @@ function chainDiagramSVG(a,box){
     </svg>`,note:null};
   }
   const boxes={};
-  const nodeIds=a.mode==='node'?[a.stage]
+  // node mode shows the highlighted stage plus its direct EDGES neighbors,
+  // same box/arrow drawing below as connector/branch/converge - just a
+  // smaller stage list, not a second visual model.
+  const nodeIds=a.mode==='node'?[a.stage,...neighborsOf(a.stage)]
     :a.mode==='connector'?[a.src[0],a.dst[0]]
     :a.mode==='branch'?[a.src[0],...a.dst]
     :a.mode==='converge'?[...a.src,a.dst[0]]
@@ -4455,6 +4458,7 @@ function chainDiagramSVG(a,box){
   const edgePairs=a.mode==='connector'?[[a.src[0],a.dst[0]]]
     :a.mode==='branch'?a.dst.map(d=>[a.src[0],d])
     :a.mode==='converge'?a.src.map(s=>[s,a.dst[0]])
+    :a.mode==='node'?EDGES.filter(e=>e.from===a.stage||e.to===a.stage).map(e=>[e.from,e.to])
     :[];
   const lines=edgePairs.map(([f,t])=>{
     const bf=boxes[f],bt=boxes[t];if(!bf||!bt)return '';
@@ -4852,6 +4856,17 @@ const EDGES=[
   {id:'jib-close', from:'jib',  to:'close'},
   {id:'close-report', from:'close', to:'report'},
 ];
+// Direct neighbors of a stage, from EDGES, either direction. Used by
+// chainDiagramSVG() to give node mode the same box-and-arrow context
+// connector/branch/converge already have, without inventing new geometry.
+function neighborsOf(stageId){
+  const nbrs=[];
+  EDGES.forEach(e=>{
+    if(e.from===stageId&&!nbrs.includes(e.to))nbrs.push(e.to);
+    if(e.to===stageId&&!nbrs.includes(e.from))nbrs.push(e.from);
+  });
+  return nbrs;
+}
 const FOUNDATION={id:'found',label:'Master data and integration',domains:['D01','D12']};
 function chainOf(domain){
   if(FOUNDATION.domains.includes(domain))return FOUNDATION.id;
