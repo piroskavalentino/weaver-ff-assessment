@@ -1,0 +1,21 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# env files — the frontend's Supabase URL/publishable key live in the HTML's
+# own CONFIG block, not in an env file, so this only ever catches local
+# Supabase CLI secrets.
+.env
+.env.*
+!.env*.example
+
+# local notes
+CLAUDE.local.md
+
+# Supabase CLI local artifacts
+supabase/.env
+supabase/.env.*
+supabase/.branches
+supabase/.temp
+
+# misc
+.DS_Store
+*.pem

@@ -1,0 +1,66 @@
+name: Supabase migrations & functions (manual)
+
+# workflow_dispatch ONLY. This never runs on push and never runs on a
+# schedule — it exists so a migration or function deploy can be triggered
+# deliberately, by a person. Running this requires SUPABASE_ACCESS_TOKEN and
+# SUPABASE_PROJECT_REF to be set as repository (or environment) secrets
+# first; until then this workflow will fail at the login step, which is
+# expected.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run"
+        required: true
+        type: choice
+        options:
+          - migrations
+          - functions
+          - both
+        default: both
+      confirm:
+        description: 'Type "deploy" to confirm — this targets a real Supabase project'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'deploy' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Push migrations
+        if: ${{ github.event.inputs.action == 'migrations' || github.event.inputs.action == 'both' }}
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy assessment-api function (no JWT verification — see supabase/config.toml)
+        if: ${{ github.event.inputs.action == 'functions' || github.event.inputs.action == 'both' }}
+        run: supabase functions deploy assessment-api --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Set function secrets
+        if: ${{ github.event.inputs.action == 'functions' || github.event.inputs.action == 'both' }}
+        run: |
+          supabase secrets set \
+            REPORTS_PASSPHRASE="$REPORTS_PASSPHRASE" \
+            ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REPORTS_PASSPHRASE: ${{ secrets.WEAVER_REPORTS_PASSPHRASE }}
+          ALLOWED_ORIGINS: ${{ secrets.WEAVER_ALLOWED_ORIGINS }}

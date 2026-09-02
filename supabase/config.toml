@@ -1,0 +1,11 @@
+# Weaver Upstream Field-to-Finance Maturity Assessment — Nashville / Enertia 2026
+#
+# This project deliberately uses no Supabase Auth. verify_jwt is disabled for
+# assessment-api so the platform doesn't demand a Supabase session JWT before
+# the request even reaches the handler; all authorization happens inside the
+# function itself, against the write token (respondent routes) or the
+# Reports passphrase (admin routes). Deploy with --no-verify-jwt as well —
+# this file alone does not change how a hosted project treats the function.
+
+[functions.assessment-api]
+verify_jwt = false
